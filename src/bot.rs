@@ -1,4 +1,4 @@
-use serenity::{prelude::*, async_trait, model::prelude::{interaction::Interaction, Ready}};
+use serenity::{prelude::*, async_trait, model::prelude::{interaction::{Interaction, InteractionResponseType}, Ready, command::{Command, CommandOptionType}, GuildId}};
 use tokio::sync::mpsc;
 use crate::State;
 
@@ -8,13 +8,53 @@ struct Handler;
 impl EventHandler for Handler {
 	async fn interaction_create(&self, ctx: Context, interaction:  Interaction) {
 		if let Interaction::ApplicationCommand(command) = interaction {
-			dbg!("Recieved a application command interaction (slash command): {:#?}", &command);
+			// dbg!("Recieved a application command interaction (slash command): {:#?}", &command);
 			println!("{0}", command.data.name.as_str());
+
+			let resp = match command.data.name.as_str() {
+				"ping" => { "Pong".to_string() },
+				"id" => {
+					format!("Server ID: {0}", command.guild_id.unwrap())
+				},
+				_ => { "Not implemented yet!".to_string() },
+			};
+
+			if let Err(why) = command.create_interaction_response(&ctx.http, |r| {
+				r.kind(InteractionResponseType::ChannelMessageWithSource)
+				 .interaction_response_data(|m| m.content(resp))
+			}).await {
+				println!("Cannot respond to slash command: {:#?}", why);	
+			}
 		}
 	}
 
-	async fn ready(&self, ctx: Context, ready: Ready) {
+	async fn ready(&self, ctx: Context, _ready: Ready) {
 		dbg!("Bot is connected!");
+		
+		let _slash_commands = Command::set_global_application_commands(&ctx.http, |commands| {
+			commands
+			.create_application_command(|c| {
+				c.name("ping").description("Pings Minstrel. A test command.")
+			})
+			.create_application_command(|c| {
+				c.name("id").description("Get's the current server's ID.")
+			})
+			.create_application_command(|c| {
+				c.name("roll").description("Rolls dice based on input string.")
+					.create_option(|o| {
+						o.name("dice").description("eg: 1d20, 2d20kh, 5d6k3l")
+							.kind(CommandOptionType::String).required(true)
+					})
+			})
+		}).await;
+
+		// println!("Set Global Commands: {:#?}", slash_commands);
+
+		let _guildslash = GuildId::create_application_command(
+			&GuildId(std::env::var("SERV_ID").expect("No Server ID found!").parse().expect("ID not an INT")), 
+			&ctx.http, |c|{
+			c.name("join").description("The bot joins the voice channel you are currently in")
+		}).await;
 	}
 }
 
