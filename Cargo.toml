@@ -8,7 +8,7 @@ edition = "2021"
 [dependencies]
 axum = "0.6.18"
 dotenv = "0.15.0"
-tokio = { version = "1.28.0", features = ["macros", "rt-multi-thread"]}
+tokio = { version = "1.28.0", features = ["macros", "rt-multi-thread", "signal", "sync"]}
 
 [dependencies.serenity]
 version = "0.11.5" 
