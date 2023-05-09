@@ -1,5 +1,6 @@
 mod bot;
 mod server;
+mod commands { pub mod defs; pub mod run; }
 
 use tokio::{task, sync::mpsc};
 
@@ -22,6 +23,7 @@ async fn main() {
 	tokio::try_join!(server_task, bot_task, shutdown_task).expect("Error encountered in Server-Bot concurrency...");
 }
 
+// Handle Gracefully shutting down. Use the mpsc channels to send shutdown messages.
 async fn shutdown(s_send: mpsc::Sender<State>, b_send: mpsc::Sender<State>) {
 	// Graceful Shutdown with Ctrl-C
 	match tokio::signal::ctrl_c().await {
