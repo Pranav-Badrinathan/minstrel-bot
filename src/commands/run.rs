@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use serenity::
 	{model::prelude::{interaction::
-		{application_command::ApplicationCommandInteraction, InteractionResponseType}, Guild, ChannelId}, 
+		{application_command::{ApplicationCommandInteraction, CommandDataOptionValue}, InteractionResponseType}, Guild, ChannelId}, 
 	http::Http, prelude::Context};
 
 pub async fn ping(http:Arc<Http>, c: ApplicationCommandInteraction) -> Result<(), serenity::Error> {
@@ -29,21 +29,37 @@ pub async fn join(ctx: Context, c: ApplicationCommandInteraction) -> Result<(), 
 	let guild: Guild = ctx.cache.guild(c.guild_id.expect("Error getting GuildId!"))
 		.expect("Can't get the guild. Did you forget to set the GUILD intents in Client::builder?");
 
-	// If invoking user is in a vc, connect. Else, respond with the error.
-	if let Some(vs) = guild.voice_states.get(&c.user.id) {
-		let channel: ChannelId = vs.channel_id.expect("User is in a channel that does not exist!");
+	let channel: Option<ChannelId>;
 
+	if let Some(id) = c.data.options.get(0) {
+		if let CommandDataOptionValue::Channel(x) = id.resolved.as_ref().unwrap() {
+			channel = Some(x.id);
+			resp = "Connected!".to_string();
+		}
+		else {
+		    channel = None;
+			resp = "Provided option is not a channel!".to_string();
+		}
+	}
+	else {
+		// If invoking user is in a vc, connect. Else, respond with the error.
+		if let Some(vs) = guild.voice_states.get(&c.user.id) {
+			channel = Some(vs.channel_id.expect("User is in a channel that does not exist!"));
+			resp = "Connected!".to_string();
+		}
+		else {
+			channel = None;
+			resp = "You are not in a voice channel! \
+				Specify a channel or connect to a voice channel and try again.".to_string();
+		}
+	}
+
+	if let Some(channel) = channel {
 		// Connect with songbird.
 		let _handler = songbird::get(&ctx).await.expect("Songbird not registered")
 			.join(c.guild_id.unwrap(), channel).await;
 
-		resp = "Connected!".to_string();
 	}
-	else {
-		resp = "You are not in a voice channel! \
-			Specify a channel or connect to a voice channel and try again.".to_string();
-	}
-
 	// if let Ok(()) = handler.1 { 
 	// }
 	
