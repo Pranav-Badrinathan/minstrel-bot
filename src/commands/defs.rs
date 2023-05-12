@@ -18,4 +18,13 @@ pub fn roll(c: &mut CreateApplicationCommand) -> &mut CreateApplicationCommand {
 
 pub fn join(c: &mut CreateApplicationCommand) -> &mut CreateApplicationCommand {
 	c.name("join").description("The bot joins the voice channel you are currently in.")
+		.create_option(|o| {
+			o.name("channel")
+				.description("Leave blank for Minstrel to join the voice channel you are currently in")
+				.kind(CommandOptionType::Channel)
+		})
+}
+
+pub fn leave(c: &mut CreateApplicationCommand) -> &mut CreateApplicationCommand {
+	c.name("leave").description("Minstrel leaves the voice channel if it is in one.")
 }

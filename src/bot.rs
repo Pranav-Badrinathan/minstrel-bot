@@ -3,10 +3,12 @@ use serenity::
 		{interaction::Interaction, 
 			Ready, 
 			command::Command,
-			GuildId}};
+			GuildId, PartialGuild}};
 
 use tokio::sync::mpsc;
 use crate::{State, commands};
+
+use songbird::SerenityInit;
 
 struct Handler;
 
@@ -19,7 +21,8 @@ impl EventHandler for Handler {
 			let resp = match command.data.name.as_str() {
 				"ping" => { commands::run::ping(ctx.http, command).await },
 				"id" => { commands::run::id(ctx.http, command).await },
-				"join" => { commands::run::join(ctx.http, command).await },
+				"join" => { commands::run::join(ctx, command).await },
+				"leave" => { commands::run::leave(ctx, command).await },
 				_ => { commands::run::unimplemented(ctx.http, command).await },
 			};
 
@@ -38,14 +41,17 @@ impl EventHandler for Handler {
 			.create_application_command(|c| { commands::defs::ping(c) })
 			.create_application_command(|c| { commands::defs::id(c) })
 			.create_application_command(|c| { commands::defs::roll(c) })
+			.create_application_command(|c| { commands::defs::join(c) })
+			.create_application_command(|c| { commands::defs::leave(c) })
 		}).await;
 
-		// println!("Set Global Commands: {:#?}", slash_commands);
+		println!("Set Global Commands: {:#?}", _slash_commands);
 
 		// Define slash commands availaible to only a particular guild.
-		let _guildslash = GuildId::create_application_command(
-			&GuildId(std::env::var("SERV_ID").expect("No Server ID found!").parse().expect("ID not an INT")), 
-			&ctx.http, |c|{ commands::defs::join(c) }).await;
+		// let _guildslash = GuildId::set_application_commands(
+		// 	&GuildId(std::env::var("GUILD_ID").expect("No Server ID found!")
+		// 		.parse().expect("ID not an INT")), 
+		// 	&ctx.http, |coms|{ coms.create_application_command(|c| commands::defs::join(c)) }).await;
 	}
 }
 
@@ -53,8 +59,10 @@ impl EventHandler for Handler {
 pub async fn bot_init(mut rcv: mpsc::Receiver<State>) {
 	// Token stored in .env file not on Git. Get the token from discord dev portal.	
 	let token = std::env::var("BOT_TOKEN").expect("Token not found in environment!!!");
-	let mut client = Client::builder(token, GatewayIntents::empty())
-		.event_handler(Handler).await
+	let mut client = Client::builder(token, GatewayIntents::all())
+		.event_handler(Handler)
+		.register_songbird()
+		.await	
 		.expect("Error creating the Client.");
 
 	// Run both the bot and the shutdown reciever in parallel. When either the bot errors
