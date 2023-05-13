@@ -31,6 +31,8 @@ pub async fn join(ctx: Context, c: ApplicationCommandInteraction) -> Result<(), 
 
 	let channel: Option<ChannelId>;
 
+	// If a channel is specifically provided, use it. Else if the user is in a voice channel, use that.
+	// Else, send out an error as channel is not specified!
 	if let Some(id) = c.data.options.get(0) {
 		if let CommandDataOptionValue::Channel(x) = id.resolved.as_ref().unwrap() {
 			channel = Some(x.id);
@@ -38,30 +40,26 @@ pub async fn join(ctx: Context, c: ApplicationCommandInteraction) -> Result<(), 
 		}
 		else {
 		    channel = None;
-			resp = "Provided option is not a channel!".to_string();
+			resp = "Provided parameter not a channel! (How did you even manage this?!)".to_string();
 		}
 	}
-	else {
-		// If invoking user is in a vc, connect. Else, respond with the error.
-		if let Some(vs) = guild.voice_states.get(&c.user.id) {
+	// If invoking user is in a vc, connect. Else, respond with the error.
+	else if let Some(vs) = guild.voice_states.get(&c.user.id) {
 			channel = Some(vs.channel_id.expect("User is in a channel that does not exist!"));
 			resp = "Connected!".to_string();
-		}
-		else {
+	}
+	// No voice channel is provided AND user is not in a vc. No idea what to connect to. Error.
+	else {
 			channel = None;
 			resp = "You are not in a voice channel! \
 				Specify a channel or connect to a voice channel and try again.".to_string();
-		}
 	}
 
 	if let Some(channel) = channel {
 		// Connect with songbird.
 		let _handler = songbird::get(&ctx).await.expect("Songbird not registered")
 			.join(c.guild_id.unwrap(), channel).await;
-
 	}
-	// if let Ok(()) = handler.1 { 
-	// }
 	
 	c.create_interaction_response(&ctx.http, |r| {
 		r.kind(InteractionResponseType::ChannelMessageWithSource)
