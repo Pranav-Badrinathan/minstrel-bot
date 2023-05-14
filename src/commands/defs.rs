@@ -1,4 +1,4 @@
-use serenity::{builder::CreateApplicationCommand, model::prelude::command::CommandOptionType};
+use serenity::{builder::CreateApplicationCommand, model::prelude::{command::CommandOptionType, ChannelType}};
 
 pub fn ping(c: &mut CreateApplicationCommand) -> &mut CreateApplicationCommand {
 	c.name("ping").description("Pings Minstrel. A test command.")
@@ -21,7 +21,7 @@ pub fn join(c: &mut CreateApplicationCommand) -> &mut CreateApplicationCommand {
 		.create_option(|o| {
 			o.name("channel")
 				.description("Leave blank for Minstrel to join the voice channel you are currently in")
-				.kind(CommandOptionType::Channel)
+				.kind(CommandOptionType::Channel).channel_types(&[ChannelType::Voice])
 		})
 }
 
