@@ -2,8 +2,7 @@ use serenity::
 	{prelude::*, async_trait, model::prelude::
 		{interaction::Interaction, 
 			Ready, 
-			command::Command,
-			GuildId, PartialGuild}};
+			command::Command}};
 
 use tokio::sync::mpsc;
 use crate::{State, commands};
