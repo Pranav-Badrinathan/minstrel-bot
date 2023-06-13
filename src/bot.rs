@@ -26,7 +26,7 @@ impl EventHandler for Handler {
 			};
 
 			if let Err(why) = resp {
-				println!("Cannot respond to slash command: {:#?}", why);	
+				println!("Cannot respond to slash command: {:#?}", why);
 			}
 		}
 	}
@@ -82,4 +82,8 @@ pub async fn bot_init(mut rcv: mpsc::Receiver<State>) {
 			}
 		},
 	}
+}
+
+pub async fn play_music(guild_id: u64) {
+	println!("Play music in {}", guild_id);
 }

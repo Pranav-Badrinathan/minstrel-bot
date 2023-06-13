@@ -1,12 +1,12 @@
 use std::net::SocketAddr;
 
-use axum::{Router, routing::*};
+use axum::{Router, routing::*, http::Request, body::Body};
 use tokio::sync::mpsc;
 
 
 pub async fn server_init(mut rcv: mpsc::Receiver<crate::State>) {
 
-	let routes = Router::new().route("/", post(|| async { println!("Damn son. We got it.") }));
+	let routes = Router::new().route("/", post(catch_post));
 
 	let addr = SocketAddr::from(([127, 0, 0, 1], 4242));
 
@@ -30,6 +30,16 @@ pub async fn server_init(mut rcv: mpsc::Receiver<crate::State>) {
 				}
 			}
 		},
+	}
+}
+
+pub async fn catch_post(req: Request<Body>) {
+	if let Some(id) = req.headers().get("guild_id") {
+		tokio::spawn(
+			crate::bot::play_music(
+				u64::from_str_radix(id.to_str().unwrap(), 10).expect("GuildID not an int")
+			)
+		);
 	}
 }
 

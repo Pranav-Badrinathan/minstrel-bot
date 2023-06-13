@@ -14,4 +14,4 @@ songbird = "0.3.2"
 [dependencies.serenity]
 version = "0.11.5" 
 default-features = false
-features = ["builder", "cache", "client", "gateway", "http", "model", "utils", "rustls_backend"]
+features = ["builder", "cache", "client", "gateway", "http", "model", "utils", "rustls_backend", "voice"]
