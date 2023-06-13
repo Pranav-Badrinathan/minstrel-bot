@@ -1,10 +1,10 @@
 use std::net::SocketAddr;
 
 use axum::{Router, routing::*, http::Request, body::Body};
-use tokio::sync::mpsc;
+use tokio::sync::watch;
 
 
-pub async fn server_init(mut rcv: mpsc::Receiver<crate::State>) {
+pub async fn server_init(mut rcv: watch::Receiver<u8>) {
 
 	let routes = Router::new().route("/", post(catch_post));
 
@@ -22,14 +22,7 @@ pub async fn server_init(mut rcv: mpsc::Receiver<crate::State>) {
 			if let Err(why) = status { println!("Webserver Error: {why}"); }
 		},
 
-		flag = rcv.recv() => {
-			if let Some(state) = flag {
-				match state {
-					crate::State::Shutdown => { /* TODO: Server Shutdown*/ },
-					crate::State::Restart => {},
-				}
-			}
-		},
+		_flag = rcv.changed() => {},
 	}
 }
 

@@ -2,40 +2,34 @@ mod bot;
 mod server;
 mod commands { pub mod defs; pub mod run; }
 
-use tokio::{task, sync::mpsc};
-
-pub enum State {
-	Shutdown,
-	Restart,
-}
+use tokio::{task, sync::watch};
 
 #[tokio::main]
 async fn main() {
 	dotenv::dotenv().ok();
 
-	let (s_send, s_recv) = mpsc::channel(100);
-	let (b_send, b_recv) = mpsc::channel(100);
+	let (s_send, s_recv) = watch::channel(0u8);
 
-	let server_task = task::spawn(server::server_init(s_recv));
-	let bot_task = task::spawn(bot::bot_init(b_recv));
-	let shutdown_task = task::spawn(shutdown(s_send, b_send));
+	let server_task = task::spawn(server::server_init(s_recv.clone()));
+	let bot_task = task::spawn(bot::bot_init(s_recv));
+	let shutdown_task = task::spawn(shutdown(s_send));
 
 	tokio::try_join!(server_task, bot_task, shutdown_task).expect("Error encountered in Server-Bot concurrency...");
 }
 
 // Handle Gracefully shutting down. Use the mpsc channels to send shutdown messages.
-async fn shutdown(s_send: mpsc::Sender<State>, b_send: mpsc::Sender<State>) {
+async fn shutdown(s_send: watch::Sender<u8>) {
 	// Graceful Shutdown with Ctrl-C
 	match tokio::signal::ctrl_c().await {
 		Ok(_) => {
 			println!("Ctrl-C Recieved. Shutting down!");
 
 			// Send the shutdown signal to the server and the bot via the mpsc channel.
-			if let Err(_) = s_send.send(State::Shutdown).await {
+			if let Err(_) = s_send.send(0) {
 				eprintln!("Server reciever dropped. Can't gracefully shutdown!");
 			}
 
-			if let Err(_) =	b_send.send(State::Shutdown).await {
+			if let Err(_) =	s_send.send(0) {
 				eprintln!("Bot reciever dropped. Can't gracefully shutdown!");
 			}
 		},

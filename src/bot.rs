@@ -4,8 +4,8 @@ use serenity::
 			Ready, 
 			command::Command}};
 
-use tokio::sync::mpsc;
-use crate::{State, commands};
+use tokio::sync::watch;
+use crate::commands;
 
 use songbird::SerenityInit;
 
@@ -55,7 +55,7 @@ impl EventHandler for Handler {
 }
 
 // Bot initialization function
-pub async fn bot_init(mut rcv: mpsc::Receiver<State>) {
+pub async fn bot_init(mut rcv: watch::Receiver<u8>) {
 	// Token stored in .env file not on Git. Get the token from discord dev portal.	
 	let token = std::env::var("BOT_TOKEN").expect("Token not found in environment!!!");
 	let mut client = Client::builder(token, GatewayIntents::all())
@@ -72,14 +72,9 @@ pub async fn bot_init(mut rcv: mpsc::Receiver<State>) {
         		println!("Client error: {:?}", why);
 			}
 		},
-		flag = rcv.recv() => {
-			if let Some(state) = flag {
-				let sm = client.shard_manager.clone();
-				match state {
-		    		State::Shutdown => sm.lock().await.shutdown_all().await,
-					State::Restart => (),
-				}
-			}
+		_flag = rcv.changed() => {
+			let sm = client.shard_manager.clone();
+			sm.lock().await.shutdown_all().await;
 		},
 	}
 }
