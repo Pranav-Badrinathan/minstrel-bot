@@ -2,16 +2,17 @@ mod bot;
 mod server;
 mod commands { pub mod defs; pub mod run; }
 
-use tokio::{task, sync::watch};
+use tokio::{task, sync::{watch, mpsc}};
 
 #[tokio::main]
 async fn main() {
 	dotenv::dotenv().ok();
 
 	let (s_send, s_recv) = watch::channel(0u8);
+	let (ad_send, ad_recv) = mpsc::channel::<Vec<u8>>(100);
 
-	let server_task = task::spawn(server::server_init(s_recv.clone()));
-	let bot_task = task::spawn(bot::bot_init(s_recv));
+	let bot_task = task::spawn(bot::bot_init(s_recv.clone(), ad_recv));
+	let server_task = task::spawn(server::server_init(s_recv, ad_send));
 	let shutdown_task = task::spawn(shutdown(s_send));
 
 	tokio::try_join!(server_task, bot_task, shutdown_task).expect("Error encountered in Server-Bot concurrency...");

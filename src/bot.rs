@@ -1,10 +1,12 @@
+use std::collections::HashMap;
+
 use serenity::
 	{prelude::*, async_trait, model::prelude::
 		{interaction::Interaction, 
 			Ready, 
 			command::Command}};
 
-use tokio::sync::watch;
+use tokio::sync::{watch, mpsc};
 use crate::commands;
 
 use songbird::SerenityInit;
@@ -20,7 +22,20 @@ impl EventHandler for Handler {
 			let resp = match command.data.name.as_str() {
 				"ping" => { commands::run::ping(ctx.http, command).await },
 				"id" => { commands::run::id(ctx.http, command).await },
-				"join" => { commands::run::join(ctx, command).await },
+				"join" => { 
+					// let handle = tokio::spawn(play_music(ctx.clone()));
+					//
+					// let mut data = ctx.data.write().await;
+					// let cdata = data
+					// 	.get_mut::<CustomData>()
+					// 	.expect("Custom Data not found!");
+					//
+					// cdata.insert("handler".to_string(), CustomData::Handler(handle));
+					//
+					// println!("{:#?}", cdata);
+
+					commands::run::join(ctx.clone(), command).await 
+				},
 				"leave" => { commands::run::leave(ctx, command).await },
 				_ => { commands::run::unimplemented(ctx.http, command).await },
 			};
@@ -55,13 +70,19 @@ impl EventHandler for Handler {
 }
 
 // Bot initialization function
-pub async fn bot_init(mut rcv: watch::Receiver<u8>) {
+pub async fn bot_init(mut rcv: watch::Receiver<u8>, ad_rcv: mpsc::Receiver<Vec<u8>>) {
 	// Token stored in .env file not on Git. Get the token from discord dev portal.	
 	let token = std::env::var("BOT_TOKEN").expect("Token not found in environment!!!");
+
+	// Custom data that can be accessed in the callback functions
+	// let mut cstm_ctx_data: HashMap<String, CustomData> = HashMap::new();
+	// cstm_ctx_data.insert("recv".to_string(), CustomData::Receiver(ad_rcv));
+	
 	let mut client = Client::builder(token, GatewayIntents::all())
 		.event_handler(Handler)
 		.register_songbird()
-		.await	
+		// .type_map_insert::<CustomData>(cstm_ctx_data)
+		.await
 		.expect("Error creating the Client.");
 
 	// Run both the bot and the shutdown reciever in parallel. When either the bot errors
@@ -79,6 +100,25 @@ pub async fn bot_init(mut rcv: watch::Receiver<u8>) {
 	}
 }
 
-pub async fn play_music(guild_id: u64) {
-	println!("Play music in {}", guild_id);
+pub async fn play_music(ctx: Context) {
+	// let data = ctx.data.read().await;
+	// let recv = data.get::<CustomData>().unwrap().get("recv").unwrap();
+	// if let CustomData::Receiver(mut rcv) = (*recv) {
+	// 	loop{
+	// 		println!("{:#?}", rcv.recv().await);
+	// 	}
+	// }
 }
+
+//----------------------------
+//Rearrange this code to be more sensical later.
+
+// #[derive(Debug)]
+// enum CustomData {
+// 	Receiver(broadcast::Receiver<Vec<u8>>),
+// 	Handler(tokio::task::JoinHandle<()>)
+// }
+//
+// impl TypeMapKey for CustomData {
+//     type Value = HashMap<String, CustomData>;
+// }
