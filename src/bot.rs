@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use serenity::
 	{prelude::*, async_trait, model::prelude::
 		{interaction::Interaction, 
@@ -7,9 +5,9 @@ use serenity::
 			command::Command}};
 
 use tokio::sync::{watch, mpsc};
-use crate::commands;
+use crate::{commands, server::AudioSet};
 
-use songbird::SerenityInit;
+use songbird::{SerenityInit, SongbirdKey, Songbird};
 
 struct Handler;
 
@@ -22,20 +20,7 @@ impl EventHandler for Handler {
 			let resp = match command.data.name.as_str() {
 				"ping" => { commands::run::ping(ctx.http, command).await },
 				"id" => { commands::run::id(ctx.http, command).await },
-				"join" => { 
-					// let handle = tokio::spawn(play_music(ctx.clone()));
-					//
-					// let mut data = ctx.data.write().await;
-					// let cdata = data
-					// 	.get_mut::<CustomData>()
-					// 	.expect("Custom Data not found!");
-					//
-					// cdata.insert("handler".to_string(), CustomData::Handler(handle));
-					//
-					// println!("{:#?}", cdata);
-
-					commands::run::join(ctx.clone(), command).await 
-				},
+				"join" => { commands::run::join(ctx.clone(), command).await },
 				"leave" => { commands::run::leave(ctx, command).await },
 				_ => { commands::run::unimplemented(ctx.http, command).await },
 			};
@@ -59,7 +44,7 @@ impl EventHandler for Handler {
 			.create_application_command(|c| { commands::defs::leave(c) })
 		}).await;
 
-		println!("Set Global Commands: {:#?}", _slash_commands);
+		// println!("Set Global Commands: {:#?}", _slash_commands);
 
 		// Define slash commands availaible to only a particular guild.
 		// let _guildslash = GuildId::set_application_commands(
@@ -70,7 +55,7 @@ impl EventHandler for Handler {
 }
 
 // Bot initialization function
-pub async fn bot_init(mut rcv: watch::Receiver<u8>, ad_rcv: mpsc::Receiver<Vec<u8>>) {
+pub async fn bot_init(mut rcv: watch::Receiver<u8>, ad_rcv: mpsc::Receiver<AudioSet>) {
 	// Token stored in .env file not on Git. Get the token from discord dev portal.	
 	let token = std::env::var("BOT_TOKEN").expect("Token not found in environment!!!");
 
@@ -85,6 +70,13 @@ pub async fn bot_init(mut rcv: watch::Receiver<u8>, ad_rcv: mpsc::Receiver<Vec<u
 		.await
 		.expect("Error creating the Client.");
 
+	let sb = client.data.read().await
+		.get::<SongbirdKey>()
+		.expect("Failed to get or initialize Songbird")
+		.clone();
+
+	let play = tokio::spawn(play_music(sb, ad_rcv));
+
 	// Run both the bot and the shutdown reciever in parallel. When either the bot errors
 	// (when the client.start() ends) or the shutdown flag is recieved, gracefully shutdown.
 	tokio::select! {
@@ -94,31 +86,38 @@ pub async fn bot_init(mut rcv: watch::Receiver<u8>, ad_rcv: mpsc::Receiver<Vec<u
 			}
 		},
 		_flag = rcv.changed() => {
+			play.abort();
 			let sm = client.shard_manager.clone();
 			sm.lock().await.shutdown_all().await;
 		},
 	}
 }
 
-pub async fn play_music(ctx: Context) {
-	// let data = ctx.data.read().await;
-	// let recv = data.get::<CustomData>().unwrap().get("recv").unwrap();
-	// if let CustomData::Receiver(mut rcv) = (*recv) {
-	// 	loop{
-	// 		println!("{:#?}", rcv.recv().await);
-	// 	}
-	// }
+pub async fn play_music(sb: std::sync::Arc<Songbird>, mut rcv: mpsc::Receiver<AudioSet>) {
+	use songbird::input::{
+		Reader, 
+		Codec, 
+		codec::OpusDecoderState, 
+		Container, 
+		Input};
+
+	loop {
+		let set = match rcv.recv().await {
+			Some(aset) => aset,
+			None => continue
+		};
+		
+		if let Some(h)= sb.get(set.guild_id) {
+			let mut handler = h.lock().await;
+
+			let audio: Input = Input::new(
+				true, 
+				Reader::from_memory(set.audio_data), 
+				Codec::Opus(OpusDecoderState::new().unwrap()), 
+				Container::Raw, None
+			);
+			
+			handler.play_source(audio);
+		};
+	}
 }
-
-//----------------------------
-//Rearrange this code to be more sensical later.
-
-// #[derive(Debug)]
-// enum CustomData {
-// 	Receiver(broadcast::Receiver<Vec<u8>>),
-// 	Handler(tokio::task::JoinHandle<()>)
-// }
-//
-// impl TypeMapKey for CustomData {
-//     type Value = HashMap<String, CustomData>;
-// }
