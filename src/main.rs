@@ -10,7 +10,7 @@ async fn main() {
 	dotenv::dotenv().ok();
 
 	let (s_send, s_recv) = watch::channel(0u8);
-	let (ad_send, ad_recv) = mpsc::channel::<AudioSet>(100);
+	let (ad_send, ad_recv) = mpsc::channel::<AudioSet>(1);
 
 	let bot_task = task::spawn(bot::bot_init(s_recv.clone(), ad_recv));
 	let server_task = task::spawn(server::server_init(s_recv, ad_send));

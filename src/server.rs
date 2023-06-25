@@ -1,7 +1,7 @@
 use std::net::SocketAddr;
 
 use axum::{Router, routing::*, http::Request, body::Body};
-use tokio::{sync::{watch, mpsc}, io::AsyncReadExt};
+use tokio::sync::{watch, mpsc};
 
 pub async fn server_init(mut rcv: watch::Receiver<u8>, ad_send: mpsc::Sender<AudioSet>) {
 	let routes = Router::new()
@@ -13,7 +13,9 @@ pub async fn server_init(mut rcv: watch::Receiver<u8>, ad_send: mpsc::Sender<Aud
 						Err(_) => return
 					};
 
-					let body: Vec<u8> = hyper::body::to_bytes(req.into_body()).await.unwrap().into();
+					let mut body: Vec<u8> = hyper::body::to_bytes(req.into_body()).await.unwrap().into();
+					body = [(body.len() as i16).to_le_bytes().to_vec(), body].concat();
+
 					ad_send.send(
 						AudioSet { 
 							guild_id: id,

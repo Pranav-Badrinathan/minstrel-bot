@@ -99,25 +99,31 @@ pub async fn play_music(sb: std::sync::Arc<Songbird>, mut rcv: mpsc::Receiver<Au
 		Codec, 
 		codec::OpusDecoderState, 
 		Container, 
-		Input};
+		Input,
+	};
+	use songbird::tracks::PlayMode;
 
 	loop {
 		let set = match rcv.recv().await {
 			Some(aset) => aset,
 			None => continue
 		};
-		
+
 		if let Some(h)= sb.get(set.guild_id) {
 			let mut handler = h.lock().await;
 
+			// println!("NEXT PACKET");
 			let audio: Input = Input::new(
 				true, 
 				Reader::from_memory(set.audio_data), 
 				Codec::Opus(OpusDecoderState::new().unwrap()), 
-				Container::Raw, None
+				Container::Dca { first_frame: 0 },
+				None
 			);
 			
-			handler.play_source(audio);
-		};
+			let track_handle = handler.play_source(audio);
+
+			while track_handle.get_info().await.unwrap().playing != PlayMode::End {}
+		}
 	}
 }
