@@ -101,7 +101,6 @@ pub async fn play_music(sb: std::sync::Arc<Songbird>, mut rcv: mpsc::Receiver<Au
 		Container, 
 		Input,
 	};
-	use songbird::tracks::PlayMode;
 
 	loop {
 		let set = match rcv.recv().await {
@@ -116,14 +115,14 @@ pub async fn play_music(sb: std::sync::Arc<Songbird>, mut rcv: mpsc::Receiver<Au
 			let audio: Input = Input::new(
 				true, 
 				Reader::from_memory(set.audio_data), 
-				Codec::Opus(OpusDecoderState::new().unwrap()), 
+				Codec::Opus(OpusDecoderState::new().unwrap()),
 				Container::Dca { first_frame: 0 },
 				None
 			);
 			
 			let track_handle = handler.play_source(audio);
 
-			while track_handle.get_info().await.unwrap().playing != PlayMode::End {}
+			while track_handle.get_info().await.unwrap().playing != songbird::tracks::PlayMode::End {}
 		}
 	}
 }

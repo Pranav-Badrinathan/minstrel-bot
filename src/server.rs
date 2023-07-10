@@ -13,15 +13,31 @@ pub async fn server_init(mut rcv: watch::Receiver<u8>, ad_send: mpsc::Sender<Aud
 						Err(_) => return
 					};
 
-					let mut body: Vec<u8> = hyper::body::to_bytes(req.into_body()).await.unwrap().into();
-					body = [(body.len() as i16).to_le_bytes().to_vec(), body].concat();
+					let frame_count = match req.headers().get("frame_count") {
+						Some(count) => u8::from_str_radix(count.to_str().unwrap(), 10).unwrap_or(0u8),
+						None => 0u8
+					};
 
-					ad_send.send(
-						AudioSet { 
-							guild_id: id,
-							audio_data: body, })
-						.await
-						.expect("Bad data sending");
+					// println!("{}", frame_count);
+
+					let body: Vec<u8> = hyper::body::to_bytes(req.into_body()).await.unwrap().into();
+					// let body = [[44, 43, 41, 31, 2, 0,  0,  0, 123, 125].to_vec(), body].concat();
+
+					let mut pos: usize = 0;
+
+					for _ in [..frame_count] {
+
+						let frame_size = i16::from_le_bytes([body[pos], body[pos + 1]]);
+
+						ad_send.send(
+							AudioSet { 
+								guild_id: id,
+								audio_data: body[pos..(frame_size as usize) + 2].to_vec(),
+							}).await
+							.expect("Bad data sending");
+
+						pos += (frame_size as usize) + 2;
+					}
 				}
 			}
 		));
