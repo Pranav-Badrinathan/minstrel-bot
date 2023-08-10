@@ -755,6 +755,7 @@ dependencies = [
  "axum",
  "dotenv",
  "hyper",
+ "lazy_static",
  "serenity",
  "songbird",
  "tokio",

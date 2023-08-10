@@ -20,7 +20,7 @@ pub async fn id(http:Arc<Http>, c: ApplicationCommandInteraction) -> Result<(), 
 	}).await
 }
 
-pub fn roll() {
+pub fn _roll() {
 
 }
 

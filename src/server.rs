@@ -1,6 +1,8 @@
 use std::net::SocketAddr;
 
-use tokio::{sync::{watch, mpsc}, net::{TcpListener, TcpStream}};
+use tokio::{sync::{watch, mpsc}, net::{TcpListener, TcpStream}, io::{AsyncReadExt, AsyncWriteExt}};
+
+use crate::bot;
 
 pub async fn server_init(mut rcv: watch::Receiver<u8>, ad_send: mpsc::Sender<AudioSet>){
 	let addr = SocketAddr::from(([127, 0, 0, 1], 4242));
@@ -20,21 +22,44 @@ pub async fn server_init(mut rcv: watch::Receiver<u8>, ad_send: mpsc::Sender<Aud
 	}
 }
 
-async fn handle_connection(stream: TcpStream) {
-	loop {
-		let mut buf = vec![0u8; 5000];
+async fn handle_connection(mut stream: TcpStream) {
+	let mut id_buf = [0u8; 8];
+	let mut guild_id: u64 = 0u64;
 
-		let size = match stream.try_read(buf.as_mut_slice()) {
+	while guild_id == 0 {
+		match stream.read(id_buf.as_mut_slice()).await {
+			Ok(_) => guild_id = u64::from_be_bytes(id_buf),
+			Err(ref e) if e.kind() == tokio::io::ErrorKind::WouldBlock => continue,
+			Err(_) => panic!("Guild ID read error! Remove this panic later"),
+		};
+	}
+
+	println!("GuildID: {}", guild_id);
+	
+	loop {
+		let mut data_buf = vec![0u8; 1000];
+
+		let size = match stream.read(data_buf.as_mut_slice()).await {
 			Ok(0) => continue,
 			Ok(n) => n,
 			Err(ref e) if e.kind() == tokio::io::ErrorKind::WouldBlock => continue,
 			Err(_) => break,
 		};
 
-		buf.truncate(size);
-		dbg!(buf.len());
+		data_buf.truncate(size);
+		dbg!(data_buf.len());
+
+		// Add the required size to the start of the frame as per DCA requirements.
+		data_buf.splice(0..0, i16::to_le_bytes(size as i16));
+
+		bot::play_music(
+			AudioSet { 
+				guild_id,
+				audio_data: data_buf,
+			}).await;
+
+		let _ = stream.write_u8(0u8).await;
 	}
-	
 }
 
 #[derive(Debug)]

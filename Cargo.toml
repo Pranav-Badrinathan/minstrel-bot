@@ -11,6 +11,7 @@ hyper = "0.14.26"
 dotenv = "0.15.0"
 tokio = { version = "1.29.1", features = ["macros", "rt-multi-thread", "signal", "sync"]}
 songbird = { version = "0.3.2", features = ["builtin-queue"] }
+lazy_static = "1.4.0"
 
 [dependencies.serenity]
 version = "0.11.6" 
