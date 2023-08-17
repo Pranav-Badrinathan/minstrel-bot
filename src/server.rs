@@ -1,24 +1,31 @@
 use std::net::SocketAddr;
 
-use tokio::{sync::{watch, mpsc}, net::{TcpListener, TcpStream}, io::{AsyncReadExt, AsyncWriteExt}};
+use tokio::{sync::watch, net::{TcpListener, TcpStream}, io::{AsyncReadExt, AsyncWriteExt}};
 
 use crate::bot;
 
-pub async fn server_init(mut rcv: watch::Receiver<u8>, ad_send: mpsc::Sender<AudioSet>){
+pub async fn server_init(mut rcv: watch::Receiver<()>){
 	let addr = SocketAddr::from(([127, 0, 0, 1], 4242));
 
 	// When the receiver get's something, it will prompt the webserver to shutdown.
 	let listener = TcpListener::bind(&addr).await.expect("Listener creation error"); 
 	println!("Listening on: {}", addr);
 
-	loop {
-		match listener.accept().await {
-		    Ok((stream, addr)) => {
-				println!("New client connected: {:#?}", addr);
-				tokio::spawn(handle_connection(stream));
+	let connect_loop = async { 
+		loop {
+			match listener.accept().await {
+			    Ok((stream, addr)) => {
+					println!("New client connected: {:#?}", addr);
+					tokio::spawn(handle_connection(stream));
+				}
+				Err(e) => println!("Connection error: Couldn't connect to client.\n{:#?}", e),
 			}
-			Err(e) => println!("Connection error: Couldn't connect to client.\n{:#?}", e),
 		}
+	};
+
+	tokio::select! {
+		_ = rcv.changed() => {},
+		_ = connect_loop => {},
 	}
 }
 
@@ -34,8 +41,6 @@ async fn handle_connection(mut stream: TcpStream) {
 		};
 	}
 
-	println!("GuildID: {}", guild_id);
-	
 	loop {
 		let mut data_buf = vec![0u8; 1000];
 

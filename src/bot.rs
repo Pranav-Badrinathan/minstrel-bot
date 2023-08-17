@@ -6,7 +6,7 @@ use serenity::
 			Ready, 
 			command::Command}};
 
-use tokio::sync::{watch, mpsc, OnceCell};
+use tokio::sync::{watch, OnceCell};
 use crate::{commands, server::AudioSet};
 
 use songbird::{SerenityInit, SongbirdKey, Songbird};
@@ -61,7 +61,7 @@ impl EventHandler for Handler {
 }
 
 // Bot initialization function
-pub async fn bot_init(mut rcv: watch::Receiver<u8>, ad_rcv: mpsc::Receiver<AudioSet>) {
+pub async fn bot_init(mut rcv: watch::Receiver<()>) {
 	// Token stored in .env file not on Git. Get the token from discord dev portal.	
 	let token = std::env::var("BOT_TOKEN").expect("Token not found in environment!!!");
 
@@ -91,7 +91,7 @@ pub async fn bot_init(mut rcv: watch::Receiver<u8>, ad_rcv: mpsc::Receiver<Audio
         		println!("Client error: {:?}", why);
 			}
 		},
-		_flag = rcv.changed() => {
+		_ = rcv.changed() => {
 			let sm = client.shard_manager.clone();
 			sm.lock().await.shutdown_all().await;
 		},
