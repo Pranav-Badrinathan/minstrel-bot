@@ -1,13 +1,19 @@
+use std::sync::Arc;
+use lazy_static::lazy_static;
 use serenity::
 	{prelude::*, async_trait, model::prelude::
 		{interaction::Interaction, 
 			Ready, 
 			command::Command}};
 
-use tokio::sync::{watch, mpsc};
+use tokio::sync::{watch, OnceCell};
 use crate::{commands, server::AudioSet};
 
 use songbird::{SerenityInit, SongbirdKey, Songbird};
+
+lazy_static!{
+	static ref SONG: OnceCell<Arc<Songbird>> = OnceCell::new();
+}
 
 struct Handler;
 
@@ -55,7 +61,7 @@ impl EventHandler for Handler {
 }
 
 // Bot initialization function
-pub async fn bot_init(mut rcv: watch::Receiver<u8>, ad_rcv: mpsc::Receiver<AudioSet>) {
+pub async fn bot_init(mut rcv: watch::Receiver<()>) {
 	// Token stored in .env file not on Git. Get the token from discord dev portal.	
 	let token = std::env::var("BOT_TOKEN").expect("Token not found in environment!!!");
 
@@ -75,7 +81,7 @@ pub async fn bot_init(mut rcv: watch::Receiver<u8>, ad_rcv: mpsc::Receiver<Audio
 		.expect("Failed to get or initialize Songbird")
 		.clone();
 
-	let play = tokio::spawn(play_music(sb, ad_rcv));
+	SONG.set(sb).expect("Error setting Songbird (SONG)");
 
 	// Run both the bot and the shutdown reciever in parallel. When either the bot errors
 	// (when the client.start() ends) or the shutdown flag is recieved, gracefully shutdown.
@@ -85,15 +91,14 @@ pub async fn bot_init(mut rcv: watch::Receiver<u8>, ad_rcv: mpsc::Receiver<Audio
         		println!("Client error: {:?}", why);
 			}
 		},
-		_flag = rcv.changed() => {
-			play.abort();
+		_ = rcv.changed() => {
 			let sm = client.shard_manager.clone();
 			sm.lock().await.shutdown_all().await;
 		},
 	}
 }
 
-pub async fn play_music(sb: std::sync::Arc<Songbird>, mut rcv: mpsc::Receiver<AudioSet>) {
+pub async fn play_music(set: AudioSet) {
 	use songbird::input::{
 		Reader, 
 		Codec, 
@@ -102,27 +107,21 @@ pub async fn play_music(sb: std::sync::Arc<Songbird>, mut rcv: mpsc::Receiver<Au
 		Input,
 	};
 
-	loop {
-		let set = match rcv.recv().await {
-			Some(aset) => aset,
-			None => continue
-		};
+	let sb = SONG.get().expect("Songbird not found!").clone();
 
-		if let Some(h)= sb.get(set.guild_id) {
-			let mut handler = h.lock().await;
+	if let Some(h) = sb.get(set.guild_id) {
+		let mut handler = h.lock().await;
 
-			// println!("NEXT PACKET");
-			let audio: Input = Input::new(
-				true, 
-				Reader::from_memory(set.audio_data), 
-				Codec::Opus(OpusDecoderState::new().unwrap()),
-				Container::Dca { first_frame: 0 },
-				None
-			);
-			
-			let track_handle = handler.play_source(audio);
-
-			while track_handle.get_info().await.unwrap().playing != songbird::tracks::PlayMode::End {}
-		}
+		// println!("NEXT PACKET");
+		let audio: Input = Input::new(
+			true, 
+			Reader::from_memory(set.audio_data), 
+			Codec::Opus(OpusDecoderState::new().unwrap()),
+			Container::Dca { first_frame: 0 },
+			None
+		);
+				
+		let track_handle = handler.play_source(audio);
+		while track_handle.get_info().await.unwrap().playing != songbird::tracks::PlayMode::End {}
 	}
 }

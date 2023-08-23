@@ -1,59 +1,69 @@
 use std::net::SocketAddr;
 
-use axum::{Router, routing::*, http::Request, body::Body};
-use tokio::sync::{watch, mpsc};
+use tokio::{sync::watch, net::{TcpListener, TcpStream}, io::{AsyncReadExt, AsyncWriteExt}};
 
-pub async fn server_init(mut rcv: watch::Receiver<u8>, ad_send: mpsc::Sender<AudioSet>) {
-	let routes = Router::new()
-		.route("/", 
-			post(|req: Request<Body>| async move {
-				if let Some(head_id) = req.headers().get("guild_id") {
-					let id = match u64::from_str_radix(head_id.to_str().unwrap(), 10) {
-						Ok(id) => id,
-						Err(_) => return
-					};
+use crate::bot;
 
-					let frame_count = match req.headers().get("frame_count") {
-						Some(count) => u8::from_str_radix(count.to_str().unwrap(), 10).unwrap_or(0u8),
-						None => 0u8
-					};
-
-					// println!("{}", frame_count);
-
-					let body: Vec<u8> = hyper::body::to_bytes(req.into_body()).await.unwrap().into();
-					// let body = [[44, 43, 41, 31, 2, 0,  0,  0, 123, 125].to_vec(), body].concat();
-
-					let mut pos: usize = 0;
-
-					for _ in [..frame_count] {
-
-						let frame_size = i16::from_le_bytes([body[pos], body[pos + 1]]);
-
-						ad_send.send(
-							AudioSet { 
-								guild_id: id,
-								audio_data: body[pos..(frame_size as usize) + 2].to_vec(),
-							}).await
-							.expect("Bad data sending");
-
-						pos += (frame_size as usize) + 2;
-					}
-				}
-			}
-		));
-
+pub async fn server_init(mut rcv: watch::Receiver<()>){
 	let addr = SocketAddr::from(([127, 0, 0, 1], 4242));
 
 	// When the receiver get's something, it will prompt the webserver to shutdown.
-	let serv = axum::Server::bind(&addr)
-		.serve(routes.into_make_service())
-		.with_graceful_shutdown(async {
-			rcv.changed().await.ok();
-	});
+	let listener = TcpListener::bind(&addr).await.expect("Listener creation error"); 
+	println!("Listening on: {}", addr);
 
-	// Await the `server` receiving the signal...
-	if let Err(e) = serv.await {
-		eprintln!("server error: {}", e);
+	let connect_loop = async { 
+		loop {
+			match listener.accept().await {
+			    Ok((stream, addr)) => {
+					println!("New client connected: {:#?}", addr);
+					tokio::spawn(handle_connection(stream));
+				}
+				Err(e) => println!("Connection error: Couldn't connect to client.\n{:#?}", e),
+			}
+		}
+	};
+
+	tokio::select! {
+		_ = rcv.changed() => {},
+		_ = connect_loop => {},
+	}
+}
+
+async fn handle_connection(mut stream: TcpStream) {
+	let mut id_buf = [0u8; 8];
+	let mut guild_id: u64 = 0u64;
+
+	while guild_id == 0 {
+		match stream.read(id_buf.as_mut_slice()).await {
+			Ok(_) => guild_id = u64::from_be_bytes(id_buf),
+			Err(ref e) if e.kind() == tokio::io::ErrorKind::WouldBlock => continue,
+			Err(_) => panic!("Guild ID read error! Remove this panic later"),
+		};
+	}
+
+	loop {
+		let mut data_buf = vec![0u8; 1000];
+
+		let size = match stream.read(data_buf.as_mut_slice()).await {
+			Ok(0) => continue,
+			Ok(n) => n,
+			Err(ref e) if e.kind() == tokio::io::ErrorKind::WouldBlock => continue,
+			Err(_) => break,
+		};
+
+		data_buf.truncate(size);
+		dbg!(data_buf.len());
+
+		// Add the required size to the start of the frame as per DCA requirements.
+		data_buf.splice(0..0, i16::to_le_bytes(size as i16));
+
+		bot::play_music(
+			AudioSet { 
+				guild_id,
+				audio_data: data_buf,
+			}).await;
+
+		let _ = stream.write_u8(0u8).await;
 	}
 }
 
