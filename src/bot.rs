@@ -2,9 +2,8 @@ use std::sync::Arc;
 use lazy_static::lazy_static;
 use serenity::
 	{prelude::*, async_trait, model::prelude::
-		{interaction::Interaction, 
-			Ready, 
-			command::Command}};
+		Ready};
+use serenity::model::application::{Command, Interaction};
 
 use tokio::sync::{watch, OnceCell};
 use crate::{commands, server::AudioSet};
@@ -20,7 +19,7 @@ struct Handler;
 #[async_trait]
 impl EventHandler for Handler {
 	async fn interaction_create(&self, ctx: Context, interaction:  Interaction) {
-		if let Interaction::ApplicationCommand(command) = interaction {
+		if let Interaction::Command(command) = interaction {
 			println!("Recieved an application command: {0}", command.data.name.as_str());
 
 			let resp = match command.data.name.as_str() {
@@ -41,14 +40,13 @@ impl EventHandler for Handler {
 		println!("{} is connected!", ready.user.name);
 	
 		// Define the slash commands that are availaible to all guilds with this bot.
-		let _slash_commands = Command::set_global_application_commands(&ctx.http, |comms| {
-			comms
-			.create_application_command(|c| { commands::defs::ping(c) })
-			.create_application_command(|c| { commands::defs::id(c) })
-			.create_application_command(|c| { commands::defs::roll(c) })
-			.create_application_command(|c| { commands::defs::join(c) })
-			.create_application_command(|c| { commands::defs::leave(c) })
-		}).await;
+		let _slash_commands = Command::set_global_commands(&ctx.http, vec![
+			commands::defs::ping(),
+			commands::defs::id(),
+			commands::defs::roll(),
+			commands::defs::join(),
+			commands::defs::leave(),
+		]).await;
 
 		// println!("Set Global Commands: {:#?}", _slash_commands);
 
@@ -93,35 +91,43 @@ pub async fn bot_init(mut rcv: watch::Receiver<()>) {
 		},
 		_ = rcv.changed() => {
 			let sm = client.shard_manager.clone();
-			sm.lock().await.shutdown_all().await;
+			sm.shutdown_all().await;
 		},
 	}
 }
 
 pub async fn play_music(set: AudioSet) {
 	use songbird::input::{
-		Reader, 
-		Codec, 
-		codec::OpusDecoderState, 
-		Container, 
 		Input,
+		LiveInput,
+		AudioStream
 	};
 
 	let sb = SONG.get().expect("Songbird not found!").clone();
 
-	if let Some(h) = sb.get(set.guild_id) {
+	if let Some(h) = sb.get(set.guild_id.into()) {
 		let mut handler = h.lock().await;
 
 		// println!("NEXT PACKET");
-		let audio: Input = Input::new(
-			true, 
-			Reader::from_memory(set.audio_data), 
-			Codec::Opus(OpusDecoderState::new().unwrap()),
-			Container::Dca { first_frame: 0 },
+		// let audio: Input = Input::new(
+		// 	true, 
+		// 	Reader::from_memory(set.audio_data), 
+		// 	Codec::Opus(OpusDecoderState::new().unwrap()),
+		// 	Container::Dca { first_frame: 0 },
+		// 	None
+		// );
+		
+		let audio: Input = Input::Live(
+			LiveInput::Raw(
+				AudioStream { 
+					input: set.audio_data.into(), 
+					hint: None 
+				}
+			),
 			None
 		);
 				
-		let track_handle = handler.play_source(audio);
+		let track_handle = handler.play_input(audio);
 		while track_handle.get_info().await.unwrap().playing != songbird::tracks::PlayMode::End {}
 	}
 }
