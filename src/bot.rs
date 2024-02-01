@@ -105,7 +105,7 @@ pub async fn play_music(set: AudioSet) {
 
 	let sb = SONG.get().expect("Songbird not found!").clone();
 
-	if let Some(h) = sb.get(set.guild_id.into()) {
+	if let Some(h) = sb.get(set.guild_id) {
 		let mut handler = h.lock().await;
 
 		// println!("NEXT PACKET");
@@ -117,17 +117,17 @@ pub async fn play_music(set: AudioSet) {
 		// 	None
 		// );
 		
-		let audio: Input = Input::Live(
-			LiveInput::Raw(
-				AudioStream { 
-					input: set.audio_data.into(), 
-					hint: None 
-				}
-			),
-			None
-		);
-				
-		let track_handle = handler.play_input(audio);
-		while track_handle.get_info().await.unwrap().playing != songbird::tracks::PlayMode::End {}
+		// let audio: Input = Input::Live(
+		// 	LiveInput::Raw(
+		// 		AudioStream { 
+		// 			input: set.audio_data.into(), 
+		// 			hint: None 
+		// 		}
+		// 	),
+		// 	None
+		// );
+		// 	
+		// let track_handle = handler.play_input(audio);
+		// while track_handle.get_info().await.unwrap().playing != songbird::tracks::PlayMode::End {}
 	}
 }

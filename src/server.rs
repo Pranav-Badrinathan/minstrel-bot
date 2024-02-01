@@ -1,4 +1,4 @@
-use std::net::SocketAddr;
+use std::{net::SocketAddr, num::NonZeroU64};
 
 use tokio::{sync::watch, net::{TcpListener, TcpStream}, io::{AsyncReadExt, AsyncWriteExt}};
 
@@ -59,7 +59,7 @@ async fn handle_connection(mut stream: TcpStream) {
 
 		bot::play_music(
 			AudioSet { 
-				guild_id,
+				guild_id: NonZeroU64::new(guild_id).unwrap(),
 				audio_data: data_buf,
 			}).await;
 
@@ -69,6 +69,6 @@ async fn handle_connection(mut stream: TcpStream) {
 
 #[derive(Debug)]
 pub struct AudioSet {
-	pub guild_id: u64,
+	pub guild_id: NonZeroU64,
 	pub audio_data: Vec<u8>,
 }
