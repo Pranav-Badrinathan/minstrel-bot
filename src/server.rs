@@ -1,6 +1,10 @@
 use std::{net::SocketAddr, num::NonZeroU64};
 
-use tokio::{sync::watch, net::{TcpListener, TcpStream}, io::{AsyncReadExt, AsyncWriteExt}};
+use tokio::{
+	sync::watch, 
+	net::{TcpListener, TcpStream}, 
+	io::{AsyncReadExt, AsyncWriteExt}
+};
 
 use crate::bot;
 

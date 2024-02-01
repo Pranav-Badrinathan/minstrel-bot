@@ -1,14 +1,18 @@
 use std::sync::Arc;
 use lazy_static::lazy_static;
-use serenity::
-	{prelude::*, async_trait, model::prelude::
-		Ready};
-use serenity::model::application::{Command, Interaction};
-
 use tokio::sync::{watch, OnceCell};
-use crate::{commands, server::AudioSet};
 
+use serenity::{
+	async_trait, 
+	prelude::*, 
+	model::{
+		prelude::Ready,
+		application::{Command, Interaction}
+	}
+};
 use songbird::{SerenityInit, SongbirdKey, Songbird};
+
+use crate::{commands, server::AudioSet};
 
 lazy_static!{
 	static ref SONG: OnceCell<Arc<Songbird>> = OnceCell::new();
