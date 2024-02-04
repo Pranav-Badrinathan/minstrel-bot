@@ -1,6 +1,10 @@
-use std::net::SocketAddr;
+use std::{net::SocketAddr, num::NonZeroU64};
 
-use tokio::{sync::watch, net::{TcpListener, TcpStream}, io::{AsyncReadExt, AsyncWriteExt}};
+use tokio::{
+	sync::watch, 
+	net::{TcpListener, TcpStream}, 
+	io::{AsyncReadExt, AsyncWriteExt}
+};
 
 use crate::bot;
 
@@ -42,7 +46,7 @@ async fn handle_connection(mut stream: TcpStream) {
 	}
 
 	loop {
-		let mut data_buf = vec![0u8; 1000];
+		let mut data_buf = vec![0u8; 10000];
 
 		let size = match stream.read(data_buf.as_mut_slice()).await {
 			Ok(0) => continue,
@@ -54,14 +58,18 @@ async fn handle_connection(mut stream: TcpStream) {
 		data_buf.truncate(size);
 		dbg!(data_buf.len());
 
-		// Add the required size to the start of the frame as per DCA requirements.
-		data_buf.splice(0..0, i16::to_le_bytes(size as i16));
+		let json = br#"{"dca":{"version":1,"tool":{"name":"opus-rs","version":"1.0.0","url":null,"author":null}},"opus":{"mode":"voip","sample_rate":48000,"frame_size":2880,"abr":null,"vbr":true,"channels":1},"info":null,"origin":null,"extra":null}"#;
+		
+		let mut buf = b"DCA1".to_vec();
+		buf.extend(i32::to_le_bytes(json.len() as i32));
+		buf.extend(json);
+		buf.extend(data_buf);
 
 		bot::play_music(
 			AudioSet { 
-				guild_id,
-				audio_data: data_buf,
-			}).await;
+				guild_id: NonZeroU64::new(guild_id).unwrap(),
+				audio_data: buf,
+		}).await;
 
 		let _ = stream.write_u8(0u8).await;
 	}
@@ -69,6 +77,6 @@ async fn handle_connection(mut stream: TcpStream) {
 
 #[derive(Debug)]
 pub struct AudioSet {
-	pub guild_id: u64,
+	pub guild_id: NonZeroU64,
 	pub audio_data: Vec<u8>,
 }
