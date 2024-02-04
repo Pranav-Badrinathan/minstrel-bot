@@ -10,7 +10,7 @@ use serenity::{
 		application::{Command, Interaction}
 	}
 };
-use songbird::{SerenityInit, SongbirdKey, Songbird};
+use songbird::{SerenityInit, Songbird, SongbirdKey};
 
 use crate::{commands, server::AudioSet};
 
@@ -103,8 +103,7 @@ pub async fn bot_init(mut rcv: watch::Receiver<()>) {
 pub async fn play_music(set: AudioSet) {
 	use songbird::input::{
 		Input,
-		LiveInput,
-		AudioStream
+		codecs::{CODEC_REGISTRY, PROBE}, 
 	};
 
 	let sb = SONG.get().expect("Songbird not found!").clone();
@@ -112,26 +111,12 @@ pub async fn play_music(set: AudioSet) {
 	if let Some(h) = sb.get(set.guild_id) {
 		let mut handler = h.lock().await;
 
-		// println!("NEXT PACKET");
-		// let audio: Input = Input::new(
-		// 	true, 
-		// 	Reader::from_memory(set.audio_data), 
-		// 	Codec::Opus(OpusDecoderState::new().unwrap()),
-		// 	Container::Dca { first_frame: 0 },
-		// 	None
-		// );
-		
-		// let audio: Input = Input::Live(
-		// 	LiveInput::Raw(
-		// 		AudioStream { 
-		// 			input: set.audio_data.into(), 
-		// 			hint: None 
-		// 		}
-		// 	),
-		// 	None
-		// );
-		// 	
-		// let track_handle = handler.play_input(audio);
-		// while track_handle.get_info().await.unwrap().playing != songbird::tracks::PlayMode::End {}
+		let audio: Input = set.audio_data.into();
+		let audio: Input = audio.make_playable_async(&CODEC_REGISTRY, &PROBE).await
+			.expect("Can't make audio playable!");
+
+		let track_handle = handler.play_input(audio);
+
+		while track_handle.get_info().await.unwrap().playing == songbird::tracks::PlayMode::Play {}
 	}
 }

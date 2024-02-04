@@ -57,7 +57,7 @@ pub async fn join(ctx: Context, c: CommandInteraction) -> Result<(), serenity::E
 	}
 	if let Some(channel) = channel {
 		// Connect with songbird.
-		let _ = songbird::get(&ctx).await.expect("Songbird not registered").clone()
+		let _ = songbird::get(&ctx).await.expect("Songbird not registered")
 			.join(c.guild_id.unwrap(), channel).await;
 	}
 
