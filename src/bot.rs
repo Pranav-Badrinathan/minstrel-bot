@@ -120,3 +120,95 @@ pub async fn play_music(set: AudioSet) {
 		while track_handle.get_info().await.unwrap().playing == songbird::tracks::PlayMode::Play {}
 	}
 }
+
+/// Experimental stuff beyond. Will be modified if found to work.
+
+use tokio::sync::mpsc;
+use songbird::constants::SILENT_FRAME;
+
+lazy_static! {
+	static ref DCA1_HEADER: Vec<u8> = [
+		b"DCA1".to_vec(),
+		vec![224, 0, 0, 0],
+		br#"{"dca":{"version":1,"tool":{"name":"opus-rs","version":"1.0.0","url":null,"author":null}},"opus":{"mode":"voip","sample_rate":48000,"frame_size":960,"abr":null,"vbr":true,"channels":2},"info":null,"origin":null,"extra":null}"#.to_vec()
+	].concat();
+}
+
+struct OpusStream {
+	// 20 ms opus frame Receiver.
+	rx: mpsc::Receiver<Vec<u8>>,
+	current_frame: Option<Vec<u8>>,
+	chunk_pos: usize,
+	pos: usize,
+}
+
+impl std::io::Read for OpusStream {
+	fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+		// If the position in the stream is under header len, headers have not
+		// been passed in yet. Pass them in.
+		// Return or not idk. Testing still.
+		//
+		// ELSE if there is not frame selected, get one.
+		if self.pos < DCA1_HEADER.len() {
+			let size = DCA1_HEADER.as_slice().read(buf)?;
+			self.pos = size;
+			self.chunk_pos =  0;
+			return Ok(size);
+
+		} else if self.current_frame.is_none() {
+			match self.rx.try_recv() {
+				Ok(fr) => {
+					self.current_frame = Some(fr);
+					self.chunk_pos = 0
+				}
+				Err(mpsc::error::TryRecvError::Empty) => self.current_frame = Some(SILENT_FRAME.to_vec()),
+				Err(mpsc::error::TryRecvError::Disconnected) => return Ok(0),
+			}
+		}
+
+		// Frame definitely exists, as cond above will fill it with something.
+		let frame = self.current_frame.clone().unwrap();
+
+		// Now, we fill the buffer with the frame size information DCA expects
+		// to recieve.
+		//
+		// ELSE we have already given size info, so give actual audio data now.
+		if self.chunk_pos < 2 {
+			let size = (frame.len() as u16).to_le_bytes().as_slice().read(buf)?;
+
+			self.chunk_pos = size; // Size will always be 2, cause 16 bit.
+			self.pos += size;
+
+			Ok(size)
+			
+		} else {
+			let size = frame.as_slice().read(buf)?;
+
+			self.chunk_pos = 0;
+			self.pos += size;
+
+			Ok(size)
+		}
+	}
+}
+
+pub async fn play_music2(set: AudioSet) {
+	// use songbird::input::{
+	// 	Input,
+	// 	codecs::{CODEC_REGISTRY, PROBE}, 
+	// };
+	//
+	// let sb = SONG.get().expect("Songbird not found!").clone();
+	//
+	// if let Some(h) = sb.get(set.guild_id) {
+	// 	let mut handler = h.lock().await;
+	//
+	// 	let audio: Input = set.audio_data.into();
+	// 	let audio: Input = audio.make_playable_async(&CODEC_REGISTRY, &PROBE).await
+	// 		.expect("Can't make audio playable!");
+	//
+	// 	let track_handle = handler.play_input(audio);
+	//
+	// 	while track_handle.get_info().await.unwrap().playing == songbird::tracks::PlayMode::Play {}
+	// }
+}

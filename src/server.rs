@@ -35,11 +35,11 @@ pub async fn server_init(mut rcv: watch::Receiver<()>){
 
 async fn handle_connection(mut stream: TcpStream) {
 	let mut id_buf = [0u8; 8];
-	let mut guild_id: u64 = 0u64;
+	let mut guild_id: NonZeroU64 = NonZeroU64::MIN;
 
-	while guild_id == 0 {
+	while guild_id == NonZeroU64::MIN {
 		match stream.read(id_buf.as_mut_slice()).await {
-			Ok(_) => guild_id = u64::from_be_bytes(id_buf),
+			Ok(_) => guild_id = u64::from_be_bytes(id_buf).try_into().unwrap_or(NonZeroU64::MIN),
 			Err(ref e) if e.kind() == tokio::io::ErrorKind::WouldBlock => continue,
 			Err(_) => panic!("Guild ID read error! Remove this panic later"),
 		};
@@ -67,7 +67,7 @@ async fn handle_connection(mut stream: TcpStream) {
 
 		bot::play_music(
 			AudioSet { 
-				guild_id: NonZeroU64::new(guild_id).unwrap(),
+				guild_id,
 				audio_data: buf,
 		}).await;
 

@@ -9,6 +9,7 @@ edition = "2021"
 axum = "0.7.4"
 hyper = "1.1.0"
 dotenv = "0.15.0"
+symphonia = "0.5.3"
 tokio = { version = "1.35.1", features = ["macros", "rt-multi-thread", "signal", "sync"]}
 songbird = { version = "0.4.0", features = ["builtin-queue"] }
 lazy_static = "1.4.0"
