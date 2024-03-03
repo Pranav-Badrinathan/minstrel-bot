@@ -87,7 +87,7 @@ async fn handle_connection2(mut stream: TcpStream) {
 		};
 	}
 
-	let (tx, rx) = mpsc::unbounded_channel();
+	let (tx, rx) = mpsc::channel(100);
 
 	// First initialize the stream.
 	tokio::spawn(
@@ -111,9 +111,10 @@ async fn handle_connection2(mut stream: TcpStream) {
 		};
 
 		data_buf.truncate(size);
-		tx.send(data_buf).unwrap();
+		tx.send(data_buf).await.unwrap();
 
 		let _ = stream.write_u8(0u8).await;
+		println!("SENT ACK!");
 	}
 }
 

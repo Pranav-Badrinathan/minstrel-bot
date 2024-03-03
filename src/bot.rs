@@ -137,7 +137,7 @@ lazy_static! {
 
 pub struct OpusStream {
 	// 20 ms opus frame Receiver.
-	pub rx: mpsc::UnboundedReceiver<Vec<u8>>,
+	pub rx: mpsc::Receiver<Vec<u8>>,
 	pub current_frame: Option<Vec<u8>>,
 	pub chunk_pos: usize,
 	pub pos: usize,
