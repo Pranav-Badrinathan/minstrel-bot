@@ -1,5 +1,6 @@
 use std::sync::Arc;
 use lazy_static::lazy_static;
+use symphonia::core::io::ReadOnlySource;
 use tokio::sync::{watch, OnceCell};
 
 use serenity::{
@@ -10,7 +11,7 @@ use serenity::{
 		application::{Command, Interaction}
 	}
 };
-use songbird::{SerenityInit, Songbird, SongbirdKey};
+use songbird::{input::{AudioStream, LiveInput}, SerenityInit, Songbird, SongbirdKey};
 
 use crate::{commands, server::AudioSet};
 
@@ -56,15 +57,15 @@ impl EventHandler for Handler {
 
 		// Define slash commands availaible to only a particular guild.
 		// let _guildslash = GuildId::set_application_commands(
-		// 	&GuildId(std::env::var("GUILD_ID").expect("No Server ID found!")
-		// 		.parse().expect("ID not an INT")), 
-		// 	&ctx.http, |coms|{ coms.create_application_command(|c| commands::defs::join(c)) }).await;
+		//	&GuildId(std::env::var("GUILD_ID").expect("No Server ID found!")
+		//		.parse().expect("ID not an INT")), 
+		//	&ctx.http, |coms|{ coms.create_application_command(|c| commands::defs::join(c)) }).await;
 	}
 }
 
 // Bot initialization function
 pub async fn bot_init(mut rcv: watch::Receiver<()>) {
-	// Token stored in .env file not on Git. Get the token from discord dev portal.	
+	// Token stored in .env file not on Git. Get the token from discord dev portal. 
 	let token = std::env::var("BOT_TOKEN").expect("Token not found in environment!!!");
 
 	// Custom data that can be accessed in the callback functions
@@ -90,7 +91,7 @@ pub async fn bot_init(mut rcv: watch::Receiver<()>) {
 	tokio::select! {
 		start = client.start() => {
 			if let Err(why) = start {
-        		println!("Client error: {:?}", why);
+				println!("Client error: {:?}", why);
 			}
 		},
 		_ = rcv.changed() => {
@@ -100,27 +101,27 @@ pub async fn bot_init(mut rcv: watch::Receiver<()>) {
 	}
 }
 
-pub async fn play_music(set: AudioSet) {
-	use songbird::input::{
-		Input,
-		codecs::{CODEC_REGISTRY, PROBE}, 
-	};
-
-	let sb = SONG.get().expect("Songbird not found!").clone();
-
-	if let Some(h) = sb.get(set.guild_id) {
-		let mut handler = h.lock().await;
-
-		let audio: Input = set.audio_data.into();
-		let audio: Input = audio.make_playable_async(&CODEC_REGISTRY, &PROBE).await
-			.expect("Can't make audio playable!");
-
-		let track_handle = handler.play_input(audio);
-
-		while track_handle.get_info().await.unwrap().playing == songbird::tracks::PlayMode::Play {}
-	}
-}
-
+// pub async fn play_music(set: AudioSet) {
+// 	use songbird::input::{
+// 		Input,
+// 		codecs::{CODEC_REGISTRY, PROBE}, 
+// 	};
+//
+// 	let sb = SONG.get().expect("Songbird not found!").clone();
+//
+// 	if let Some(h) = sb.get(set.guild_id) {
+// 		let mut handler = h.lock().await;
+//
+// 		let audio: Input = set.audio_data.into();
+// 		let audio: Input = audio.make_playable_async(&CODEC_REGISTRY, &PROBE).await
+// 			.expect("Can't make audio playable!");
+//
+// 		let track_handle = handler.play_input(audio);
+//
+// 		while track_handle.get_info().await.unwrap().playing == songbird::tracks::PlayMode::Play {}
+// 	}
+// }
+//
 /// Experimental stuff beyond. Will be modified if found to work.
 
 use tokio::sync::mpsc;
@@ -134,12 +135,13 @@ lazy_static! {
 	].concat();
 }
 
-struct OpusStream {
+pub struct OpusStream {
 	// 20 ms opus frame Receiver.
-	rx: mpsc::Receiver<Vec<u8>>,
-	current_frame: Option<Vec<u8>>,
-	chunk_pos: usize,
-	pos: usize,
+	pub rx: mpsc::UnboundedReceiver<Vec<u8>>,
+	pub current_frame: Option<Vec<u8>>,
+	pub chunk_pos: usize,
+	pub pos: usize,
+	pub guild_id: std::num::NonZeroU64
 }
 
 impl std::io::Read for OpusStream {
@@ -150,18 +152,23 @@ impl std::io::Read for OpusStream {
 		//
 		// ELSE if there is not frame selected, get one.
 		if self.pos < DCA1_HEADER.len() {
+			println!("Sending headers...{:#?}", self.current_frame);
 			let size = DCA1_HEADER.as_slice().read(buf)?;
 			self.pos = size;
-			self.chunk_pos =  0;
+			self.chunk_pos = 0;
 			return Ok(size);
 
 		} else if self.current_frame.is_none() {
 			match self.rx.try_recv() {
 				Ok(fr) => {
+					println!("Got Frame...");
 					self.current_frame = Some(fr);
 					self.chunk_pos = 0
-				}
-				Err(mpsc::error::TryRecvError::Empty) => self.current_frame = Some(SILENT_FRAME.to_vec()),
+				},
+				Err(mpsc::error::TryRecvError::Empty) => {
+					println!("=== SILENT FRAME ===");
+					self.current_frame = Some(SILENT_FRAME.to_vec());
+				},
 				Err(mpsc::error::TryRecvError::Disconnected) => return Ok(0),
 			}
 		}
@@ -174,41 +181,41 @@ impl std::io::Read for OpusStream {
 		//
 		// ELSE we have already given size info, so give actual audio data now.
 		if self.chunk_pos < 2 {
-			let size = (frame.len() as u16).to_le_bytes().as_slice().read(buf)?;
+			let size = (frame.len() as i16).to_le_bytes().as_slice().read(buf)?;
 
 			self.chunk_pos = size; // Size will always be 2, cause 16 bit.
 			self.pos += size;
 
+			println!("Frame size info... {}", frame.len());
 			Ok(size)
 			
 		} else {
 			let size = frame.as_slice().read(buf)?;
+			self.current_frame = None;
 
 			self.chunk_pos = 0;
 			self.pos += size;
 
+			println!("Actual data... {}", size);
 			Ok(size)
 		}
 	}
 }
 
-pub async fn play_music2(set: AudioSet) {
-	// use songbird::input::{
-	// 	Input,
-	// 	codecs::{CODEC_REGISTRY, PROBE}, 
-	// };
-	//
-	// let sb = SONG.get().expect("Songbird not found!").clone();
-	//
-	// if let Some(h) = sb.get(set.guild_id) {
-	// 	let mut handler = h.lock().await;
-	//
-	// 	let audio: Input = set.audio_data.into();
-	// 	let audio: Input = audio.make_playable_async(&CODEC_REGISTRY, &PROBE).await
-	// 		.expect("Can't make audio playable!");
-	//
-	// 	let track_handle = handler.play_input(audio);
-	//
-	// 	while track_handle.get_info().await.unwrap().playing == songbird::tracks::PlayMode::Play {}
-	// }
+pub async fn play_music2(stream: OpusStream) {
+	use songbird::input::{
+		Input,
+		codecs::{CODEC_REGISTRY, PROBE}, 
+	};
+	
+	let sb = SONG.get().expect("Songbird not found!").clone();
+	
+	if let Some(h) = sb.get(stream.guild_id) {
+		let src: ReadOnlySource<OpusStream> = ReadOnlySource::new(stream);
+		let live = LiveInput::Raw(AudioStream {input:Box::new(src), hint:None}).promote(&CODEC_REGISTRY, &PROBE).unwrap();
+
+		let inp = Input::Live(live, None);
+		let mut handler = h.lock().await;
+		handler.play_input(inp);
+	}
 }
