@@ -181,10 +181,18 @@ impl std::io::Read for OpusStream {
 		//
 		// ELSE we have already given size info, so give actual audio data now.
 		if self.chunk_pos < 2 {
-			let size = (frame.len() as i16).to_le_bytes().as_slice().read(buf)?;
+			let mut max_read = frame.len();
+			self.chunk_pos = 2; // Size will always be 2, cause 16 bit.
+			self.pos += 2;
 
-			self.chunk_pos = size; // Size will always be 2, cause 16 bit.
-			self.pos += size;
+			// This if is so hacky it hurts my soul. It only manages to extend
+			// the music playback to twice it's initial size (like 1 more sec)
+			// Find better solution soon pls.
+			if ((self.pos + frame.len()) % u16::MAX as usize) < frame.len() {
+				max_read = u16::MAX as usize - (self.pos % u16::MAX as usize - 1);
+				println!("END! {} :: {}", frame.len(), max_read);
+			}
+			let size = (max_read as i16).to_le_bytes().as_slice().read(buf)?;
 
 			println!("Frame size info... {}", frame.len());
 			Ok(size)
@@ -212,7 +220,10 @@ pub async fn play_music2(stream: OpusStream) {
 	
 	if let Some(h) = sb.get(stream.guild_id) {
 		let src: ReadOnlySource<OpusStream> = ReadOnlySource::new(stream);
-		let live = LiveInput::Raw(AudioStream {input:Box::new(src), hint:None}).promote(&CODEC_REGISTRY, &PROBE).unwrap();
+		let live = LiveInput::Raw(AudioStream {
+			input:Box::new(src),
+			hint:None
+		}).promote(&CODEC_REGISTRY, &PROBE).unwrap();
 
 		let inp = Input::Live(live, None);
 		let mut handler = h.lock().await;
