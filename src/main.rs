@@ -1,5 +1,6 @@
 mod bot;
 mod server;
+mod passthrough;
 mod commands { pub mod defs; pub mod run; }
 
 use tokio::{task, sync::watch};
