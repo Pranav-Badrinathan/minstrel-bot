@@ -152,7 +152,6 @@ impl std::io::Read for OpusStream {
 		//
 		// ELSE if there is not frame selected, get one.
 		if self.pos < DCA1_HEADER.len() {
-			println!("Sending headers...{:#?}", self.current_frame);
 			let size = DCA1_HEADER.as_slice().read(buf)?;
 			self.pos = size;
 			self.chunk_pos = 0;
@@ -161,12 +160,9 @@ impl std::io::Read for OpusStream {
 		} else if self.current_frame.is_none() {
 			match self.rx.try_recv() {
 				Ok(fr) => {
-					println!("Got Frame...");
 					self.current_frame = Some(fr);
-					self.chunk_pos = 0
 				},
 				Err(mpsc::error::TryRecvError::Empty) => {
-					println!("=== SILENT FRAME ===");
 					self.current_frame = Some(SILENT_FRAME.to_vec());
 				},
 				Err(mpsc::error::TryRecvError::Disconnected) => return Ok(0),
@@ -181,30 +177,22 @@ impl std::io::Read for OpusStream {
 		//
 		// ELSE we have already given size info, so give actual audio data now.
 		if self.chunk_pos < 2 {
-			let mut max_read = frame.len();
-			self.chunk_pos = 2; // Size will always be 2, cause 16 bit.
-			self.pos += 2;
-
-			// This if is so hacky it hurts my soul. It only manages to extend
-			// the music playback to twice it's initial size (like 1 more sec)
-			// Find better solution soon pls.
-			if ((self.pos + frame.len()) % u16::MAX as usize) < frame.len() {
-				max_read = u16::MAX as usize - (self.pos % u16::MAX as usize - 1);
-				println!("END! {} :: {}", frame.len(), max_read);
-			}
-			let size = (max_read as i16).to_le_bytes().as_slice().read(buf)?;
-
-			println!("Frame size info... {}", frame.len());
+			let size = (frame.len() as i16).to_le_bytes().as_slice().read(buf)?;
+			self.chunk_pos = size; // Size will always be 2, cause 16 bit.
+			self.pos += size;
 			Ok(size)
 			
 		} else {
-			let size = frame.as_slice().read(buf)?;
-			self.current_frame = None;
-
-			self.chunk_pos = 0;
+			let part_fr_offset = self.chunk_pos - 2;
+			let size = frame[part_fr_offset..].as_ref().read(buf)?;
+			self.chunk_pos += size;
 			self.pos += size;
 
-			println!("Actual data... {}", size);
+			if self.chunk_pos >= (frame.len() + 1) {
+				self.current_frame = None;
+				self.chunk_pos = 0;
+			}
+
 			Ok(size)
 		}
 	}
