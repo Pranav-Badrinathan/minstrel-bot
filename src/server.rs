@@ -50,7 +50,7 @@ async fn handle_connection(mut stream: TcpStream) {
 		};
 	}
 
-	let (tx, rx) = mpsc::channel(100);
+	let (tx, rx) = mpsc::channel(50);
 
 	// First initialize the stream.
 	tokio::spawn(
@@ -64,18 +64,35 @@ async fn handle_connection(mut stream: TcpStream) {
 	);
 
 	loop {
-		let mut data_buf = vec![0u8; 1000];
+		let mut data_buf = vec![0u8; 10000];
 
 		let size = match stream.read(data_buf.as_mut_slice()).await {
 			Ok(0) => continue,
 			Ok(n) => n,
 			Err(ref e) if e.kind() == ErrorKind::WouldBlock => continue,
-			Err(_) => break,
+			Err(_) => continue,
 		};
 
 		data_buf.truncate(size);
-		tx.send(data_buf).await.unwrap();
+		
+		for frame in split_frames(&data_buf).await {
+			tx.send(frame).await.unwrap();
+		}
 
 		let _ = stream.write_u8(0u8).await;
 	}
+}
+
+async fn split_frames(data: &[u8]) -> impl Iterator<Item = Vec<u8>> {
+	let mut split: Vec<Vec<u8>> = Vec::new();
+	let mut pos: usize = 0;
+	while pos < data.len() {
+		let size = i16::from_le_bytes([data[pos], data[pos+1]]) as usize;
+		pos += 2;
+
+		split.push(data[pos..pos+size].to_vec());
+		pos += size;
+	}
+
+	split.into_iter()
 }
