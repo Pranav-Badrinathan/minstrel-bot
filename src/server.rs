@@ -83,16 +83,17 @@ async fn handle_connection(mut stream: TcpStream) {
 	}
 }
 
-async fn split_frames(data: &[u8]) -> impl Iterator<Item = Vec<u8>> {
-	let mut split: Vec<Vec<u8>> = Vec::new();
+async fn split_frames(data: &[u8]) -> impl Iterator<Item = Vec<u8>> +'_ {
 	let mut pos: usize = 0;
-	while pos < data.len() {
+	let end = data.len();
+	std::iter::from_fn(move || {
+		if pos >= end { return None; }
+
 		let size = i16::from_le_bytes([data[pos], data[pos+1]]) as usize;
 		pos += 2;
-
-		split.push(data[pos..pos+size].to_vec());
+		let frame = data[pos..pos+size].to_vec();
 		pos += size;
-	}
 
-	split.into_iter()
+		Some(frame)
+	})
 }
